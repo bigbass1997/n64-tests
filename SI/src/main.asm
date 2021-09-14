@@ -7,7 +7,8 @@ origin 0x00000000
 base 0x80000000
 
 constant fp(s8) // frame pointer (being used as framebuffer pointer)
-constant BUF_BASE(0xA0180000)
+constant BUF_BASE_A(0xA0140000)
+constant BUF_BASE_B(0xA0200000)
 constant BUF_FLAGS(0xA03FFFFC)
 
 constant SP_STORAGE(0xA03FFF00)
@@ -26,14 +27,14 @@ include "lib/n64/gfx.inc"
 include "lib/graphics/colors.inc"
 insert "lib/bin/n64_bootcode.bin"
 
-macro ClearScreen() {
+macro ClearBuffer() {
     addu s4, zero, fp
     la s3, (BYTES_PER_PIXEL * SCREEN_WIDTH * SCREEN_HEIGHT)
     addu s4, s4, s3
     
     addu s3, zero, fp
-Clear:
     la s2, 0x888888FF
+Clear:
     sw s2, 0(s3)
     bne s4, s3, Clear
     addi s3, s3, 4
@@ -52,10 +53,9 @@ macro SetupISR() {
 	la t0, ISR_Jump
     
     lw t2, 0(t0)
+    lw t3, 4(t0)
     sw t2, 0x0180(t1)
-    
-    lw t2, 4(t0)
-    sw t2, 0x0184(t1)
+    sw t3, 0x0184(t1)
     
     //la t0, 0x00000080 // Use this to only set VI mask
     la t0, 0x00000595 // Use this to set VI mask and clear all other masks
@@ -73,7 +73,7 @@ macro SetupISR() {
 }
 
 // Set BUF_FLAGS[0] indicating main loop is done
-macro SetReadyForClear() {
+macro SetReadyForSwap() {
     la t0, BUF_FLAGS
     lw t1, 0(t0)
     la t2, 0x00000001
@@ -97,11 +97,11 @@ macro SWOffset(value, temp_reg, offset, base_reg) {
 }
 
 macro SetupVI() {
-    la fp, BUF_BASE // Sets framepointer CPU register
+    la fp, BUF_BASE_A // Sets framepointer CPU register
     
     la t0, 0xA4400000 // VI_BASE
     SWOffset(0x00003303, t1, VI_CTRL, t0)
-    SWOffset(BUF_BASE,   t1, VI_ORIGIN, t0)
+    SWOffset(BUF_BASE_B, t1, VI_ORIGIN, t0)
     SWOffset(0x00000140, t1, VI_WIDTH, t0)
     SWOffset(0x00000208, t1, VI_V_INTR, t0)
     SWOffset(0x03E52239, t1, VI_TIMING, t0)
@@ -131,16 +131,6 @@ Start:
     SetupVI()
     SetupISR()
     
-    // Clear initial framebuffer space
-    addu t0, zero, fp
-    la t1, (BYTES_PER_PIXEL * SCREEN_WIDTH * SCREEN_HEIGHT)
-    addu t0, t0, t1
-    addu t1, zero, fp
-StartClear:
-    la t2, 0
-    sw t2, 0(t1)
-    bne t0, t1, StartClear
-    addi t1, t1, 4
     
     
     //lui t0, PIF_BASE
@@ -157,6 +147,18 @@ StartClear:
     
     // Start of main loop
 Refresh:
+    
+    // Clear fp framebuffer for new drawing
+    addu t0, zero, fp
+    la t1, (BYTES_PER_PIXEL * SCREEN_WIDTH * SCREEN_HEIGHT)
+    addu t0, t0, t1
+    addu t1, zero, fp
+    la t2, 0
+MainLoopClear:
+    sw t2, 0(t1)
+    bne t0, t1, MainLoopClear
+    addi t1, t1, 4
+    
     //-------------------- Start printing stuff --------------------\\
     la t0, BUF_FLAGS
     PrintHexRegW(fp, 120, 10, t0, GoodFont, COLOR_BLUE)
@@ -268,7 +270,7 @@ PIFLoop:
     
     // Set BUF_FLAGS[0] and wait until next VI Interrupt (which will clear this bit flag).
     // Idea here is that the ISR will only clear the framebuffer if this loop has finished.
-    SetReadyForClear()
+    SetReadyForSwap()
     WaitForVII()
     
     j Refresh
@@ -281,6 +283,37 @@ ISR_Jump: // these two instructions are loaded into ISR Vector using SetupISR()
     nop
     
     
+    
+macro SwapBuffer() {
+    la sp, SP_STORAGE
+    sd t0, 0(sp)
+    sd t1, 8(sp)
+    sd t2, 16(sp)
+    
+    la t0, 0xA4400004 // VI_ORIGIN
+    sw fp, 0(t0)
+    
+    la t0, BUF_BASE_A
+    beq t0, fp, SwapB_CurrentIs1
+    nop
+    
+//CurrentIs2
+    la fp, BUF_BASE_A
+    
+    j SwapB_End
+    nop
+    
+SwapB_CurrentIs1:
+    la fp, BUF_BASE_B
+    
+    
+SwapB_End:
+    ld t0, 0(sp)
+    ld t1, 8(sp)
+    ld t2, 16(sp)
+}
+    
+    
 ISR_Exceptions: // ISR Handler // This will check BUF_FLAGS[0] to see if the screen finished rendering, and clear the screen if set.
     la s6, BUF_FLAGS
     lw s6, 0(s6)
@@ -291,7 +324,7 @@ ISR_Exceptions: // ISR Handler // This will check BUF_FLAGS[0] to see if the scr
     nop
     
 //BufferIsReady
-    ClearScreen()
+    SwapBuffer()
     
     la s7, 0xFFFFFFFE
     and s5, s6, s7
