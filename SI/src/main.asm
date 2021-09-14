@@ -41,7 +41,7 @@ Clear:
 }
 
 // This will first clear any VI interrupt just in case.
-// Then it copies the two instructions located at label "ISR_Jump", to the Interrupt Vector at physical address 0x00000180.
+// Then it copies the two instructions located at label "ISR_Jump", to the Interrupt Vectors.
 // It will set the MI_INTERRUPT register mask.
 // And finally will enable the global interrupt bit and IM[2] in the Status register
 macro SetupISR() {
@@ -49,24 +49,42 @@ macro SetupISR() {
     lw s6, 0(s7)
     sw s6, 0(s7)
 
-    la t1, 0xA0000000
-	la t0, ISR_Jump
+    la t1, 0xA0000000 // Destination Base
+	la t0, ISR_Jump // Label for jumping to ISR
     
-    lw t2, 0(t0)
-    lw t3, 4(t0)
-    sw t2, 0x0180(t1)
-    sw t3, 0x0184(t1)
+    lw t2, 0x0(t0)
+    lw t3, 0x4(t0)
+    nop
+    
+    sw t2, 0x0(t1)
+    sw t3, 0x4(t1)
+    
+    sw t2, 0x80(t1)
+    sw t3, 0x84(t1)
+    
+    sw t2, 0x100(t1)
+    sw t3, 0x104(t1)
+    
+    sw t2, 0x180(t1)
+    sw t3, 0x184(t1)
+    nop
+    
+    cache 0x10, 0x0(t1)
+    cache 0x10, 0x80(t1)
+    cache 0x10, 0x100(t1)
+    cache 0x10, 0x180(t1)
     
     //la t0, 0x00000080 // Use this to only set VI mask
     la t0, 0x00000595 // Use this to set VI mask and clear all other masks
     la t2, 0xA430000C
     sw t0, 0(t2)
     
-    nop
-    //mfc0 t0, Status
-    nop
+    //nop                //
+    //mfc0 t0, Status    //
+    //nop                //
     //ori t0, t0, 0x0401 // Use this to bitwise OR only the necessary bits
-    la t0, 0x34000401 // Use this to set the entire register to expected values
+    
+    la t0, 0x34000401 // Or use this to set the entire register to expected values
     nop
     mtc0 t0, Status
     nop
@@ -90,6 +108,36 @@ WFVII_Loop:
     bne t1, zero, WFVII_Loop
     nop
 }
+
+macro SwapBuffer() {
+    la sp, SP_STORAGE
+    sd t0, 0(sp)
+    sd t1, 8(sp)
+    sd t2, 16(sp)
+
+    la t0, 0xA4400004 // VI_ORIGIN
+    sw fp, 0(t0)
+
+    la t0, BUF_BASE_A
+    beq t0, fp, SwapB_CurrentIs1
+    nop
+
+//CurrentIs2
+    la fp, BUF_BASE_A
+
+    j SwapB_End
+    nop
+
+SwapB_CurrentIs1:
+    la fp, BUF_BASE_B
+
+
+SwapB_End:
+    ld t0, 0(sp)
+    ld t1, 8(sp)
+    ld t2, 16(sp)
+}
+
 
 macro SWOffset(value, temp_reg, offset, base_reg) {
     la {temp_reg}, {value}
@@ -132,32 +180,18 @@ Start:
     SetupISR()
     
     
-    
-    //lui t0, PIF_BASE
-	//addi t1, zero, 8
-	//sw t1, PIF_CTRL(t0)
-    
     // Clear counter data
     la t0, PRINT_ADDR
     sw zero, 0(t0)
     sw zero, 4(t0)
     
-    include "lib/graphics/print.inc"
-    
+    include "lib/graphics/print.inc" // Contains functions and macros
     
     // Start of main loop
 Refresh:
     
     // Clear fp framebuffer for new drawing
-    addu t0, zero, fp
-    la t1, (BYTES_PER_PIXEL * SCREEN_WIDTH * SCREEN_HEIGHT)
-    addu t0, t0, t1
-    addu t1, zero, fp
-    la t2, 0
-MainLoopClear:
-    sw t2, 0(t1)
-    bne t0, t1, MainLoopClear
-    addi t1, t1, 4
+    ClearBuffer()
     
     //-------------------- Start printing stuff --------------------\\
     la t0, BUF_FLAGS
@@ -167,17 +201,29 @@ MainLoopClear:
     la t0, SP_STORAGE
     mfc0 t1, Status
     sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 34, t0, GoodFont, COLOR_BLUE)
+    PrintHexRegW(fp, 120, 34, t0, GoodFont, COLOR_GREEN)
     
     // Print CP0 Cause register
     la t0, SP_STORAGE
     mfc0 t1, Cause
     sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 46, t0, GoodFont, COLOR_BLUE)
+    PrintHexRegW(fp, 120, 46, t0, GoodFont, 0x22DDAAFF)
+    
+    // Print CP0 ExceptionPC register
+    la t0, SP_STORAGE
+    mfc0 t1, ExceptionEPC
+    sw t1, 0(t0)
+    PrintHexRegW(fp, 120, 58, t0, GoodFont, COLOR_CYAN)
+    
+    // Print CP0 ErrorPC register
+    la t0, SP_STORAGE
+    mfc0 t1, ErrorEPC
+    sw t1, 0(t0)
+    PrintHexRegW(fp, 120, 70, t0, GoodFont, 0xFF6688FF)
     
     // Print MI_INTERRUPT register
     la t0, 0xA4300008
-    PrintHexRegW(fp, 120, 58, t0, GoodFont, COLOR_BLUE)
+    PrintHexRegW(fp, 120, 82, t0, GoodFont, COLOR_BLUE)
     
     la t0, PRINT_ADDR     ////
     lw t1, 0(t0)            //
@@ -283,38 +329,16 @@ ISR_Jump: // these two instructions are loaded into ISR Vector using SetupISR()
     nop
     
     
+
+ISR_Exceptions: // ISR Handler // This will check BUF_FLAGS[0] to see if the screen finished rendering, and swap buffers if set.
     
-macro SwapBuffer() {
-    la sp, SP_STORAGE
-    sd t0, 0(sp)
-    sd t1, 8(sp)
-    sd t2, 16(sp)
-    
-    la t0, 0xA4400004 // VI_ORIGIN
-    sw fp, 0(t0)
-    
-    la t0, BUF_BASE_A
-    beq t0, fp, SwapB_CurrentIs1
-    nop
-    
-//CurrentIs2
-    la fp, BUF_BASE_A
-    
-    j SwapB_End
-    nop
-    
-SwapB_CurrentIs1:
-    la fp, BUF_BASE_B
+    // Clear Cause register (should cover any exceptions that may have been raised)
+    //addu s6, zero, zero
+    //nop
+    //mtc0 s6, Cause
+    //nop
     
     
-SwapB_End:
-    ld t0, 0(sp)
-    ld t1, 8(sp)
-    ld t2, 16(sp)
-}
-    
-    
-ISR_Exceptions: // ISR Handler // This will check BUF_FLAGS[0] to see if the screen finished rendering, and clear the screen if set.
     la s6, BUF_FLAGS
     lw s6, 0(s6)
     la s7, 0x00000001
@@ -332,15 +356,41 @@ ISR_Exceptions: // ISR Handler // This will check BUF_FLAGS[0] to see if the scr
     sw s5, 0(s7)        // Clear bit-0
     
 ISRE_BufferNotReady:
+    // Clear SI interrupt (though it shouldn't ever cause a jump to this ISR)
+    la s7, 0xA4800018
+    sw s7, 0(s7)
+    
+    // Clear PI interrupt (ditto)
+    la s7, 0xA4600010
+    la s6, 0x00000002
+    sw s6, 0(s7)
+    
+    // Clear DP interrupt (ditto)
+    la s7, 0xA4300000
+    la s6, 0x00000800
+    sw s6, 0(s7)
+    
+    // Clear SP interrupt (ditto)
+    la s7, 0xA4040010
+    la s6, 0x00000008
+    sw s6, 0(s7)
+    
+    // Clear AI interrupt (ditto)
+    la s7, 0xA450000C
+    sw s7, 0(s7)
     
     // Clear VI interrupt
     la s7, 0xA4400010
     lw s6, 0(s7)
+    nop
     sw s6, 0(s7)
     
-    // Clear SI interrupt (though it shouldn't ever cause a jump to this ISR)
-    la t1, 0xA4800018
-    sw t1, 0(t1)
+    // Clear Cause register (should cover any exceptions that may have been raised)
+    addu s6, zero, zero
+    nop
+    mtc0 s6, Cause
+    nop
+    
     
     eret
     nop

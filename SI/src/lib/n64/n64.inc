@@ -74,6 +74,7 @@ constant Count(9)
 constant Compare(11)
 constant Status(12)
 constant Cause(13)
+constant ExceptionEPC(14)
 constant ErrorEPC(30)
 
 // N64 MIPS 4300 CP1 Floating Point Unit (FPU) Registers (COP1)
