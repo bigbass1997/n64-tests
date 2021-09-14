@@ -33,7 +33,7 @@ macro ClearBuffer() {
     addu s4, s4, s3
     
     addu s3, zero, fp
-    la s2, 0x888888FF
+    la s2, 0x222222FF
 Clear:
     sw s2, 0(s3)
     bne s4, s3, Clear
@@ -193,38 +193,8 @@ Refresh:
     // Clear fp framebuffer for new drawing
     ClearBuffer()
     
+    
     //-------------------- Start printing stuff --------------------\\
-    la t0, BUF_FLAGS
-    PrintHexRegW(fp, 120, 10, t0, GoodFont, COLOR_BLUE)
-    
-    // Print CP0 Status register
-    la t0, SP_STORAGE
-    mfc0 t1, Status
-    sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 34, t0, GoodFont, COLOR_GREEN)
-    
-    // Print CP0 Cause register
-    la t0, SP_STORAGE
-    mfc0 t1, Cause
-    sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 46, t0, GoodFont, 0x22DDAAFF)
-    
-    // Print CP0 ExceptionPC register
-    la t0, SP_STORAGE
-    mfc0 t1, ExceptionEPC
-    sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 58, t0, GoodFont, COLOR_CYAN)
-    
-    // Print CP0 ErrorPC register
-    la t0, SP_STORAGE
-    mfc0 t1, ErrorEPC
-    sw t1, 0(t0)
-    PrintHexRegW(fp, 120, 70, t0, GoodFont, 0xFF6688FF)
-    
-    // Print MI_INTERRUPT register
-    la t0, 0xA4300008
-    PrintHexRegW(fp, 120, 82, t0, GoodFont, COLOR_BLUE)
-    
     la t0, PRINT_ADDR     ////
     lw t1, 0(t0)            //
     addiu t1, t1, 8         //
@@ -232,51 +202,6 @@ Refresh:
     
     la t0, PRINT_ADDR
     PrintHexRegW(fp, 10, 10, t0, GoodFont, COLOR_WHITE)
-    
-    
-    // This print won't work on certain emulators that don't implement doubleword instructions
-    //la t0, PRINT_ADDR + 8
-    //dmfc0 t1, Count
-    //daddu t2, zero, zero
-    //daddu t2, t2, t1
-    //daddu t2, t2, t1
-    //daddu t2, t2, t1
-    //daddu t2, t2, t1
-    //sd t2, 0(t0)
-    //PrintHexRegW(fp, 10, 20, t0, GoodFont, COLOR_CYAN)
-    //la t0, PRINT_ADDR + 8 + 4
-    //PrintHexRegW(fp, 10+(8*9), 20, t0, GoodFont, COLOR_RED)
-    
-    
-    // Print VI_ORIGIN
-    //la t0, 0xA4400004
-    //PrintHexRegW(fp, 10, 32, t0, GoodFont, 0xFF00FFFF)
-    
-    // Print fp CPU register
-    la t0, PRINT_ADDR + 8 + 4 + 4
-    sw fp, 0(t0)
-    PrintHexRegW(fp, 10, 44, t0, GoodFont, 0xFF00FFFF)
-    
-    
-    // First word of ROM
-    la s0, 0xB0000000
-    PrintHexRegW(fp, 10, 56, s0, GoodFont, 0xFFFF00FF)
-    
-    
-    // SI Registers
-    //la s0, 0xA4800000
-    //PrepareHexRegW(fp, 10, 68, s0, GoodFont, COLOR_DARKGREEN)
-    //addiu s1, zero, 5
-SIRegLoop:
-    //jal Func_HexW
-    //nop
-    //addiu a1, a1, 4
-    //addiu a0, a0, 9 * SCREEN_WIDTH * BYTES_PER_PIXEL
-    //la t0, 0x2F0F1F00
-    //addu a3, a3, t0
-    
-    //bne s1, zero, SIRegLoop
-    //addi s1, s1, -1
     
     
     // PIF RAM
@@ -294,23 +219,21 @@ PIFLoop:
     bne s1, zero, PIFLoop
     addi s1, s1, -1
     
-    // PI_DOM1
-    la s0, 0xA4600014   // PI Registers starting at PI_DOM1_LAT
-    PrintHexRegW(fp, 236, (166 + (9 * 0)), s0, GoodFont, 0x22FFFFFF)
-    addiu s0, s0, 4
-    PrintHexRegW(fp, 236, (166 + (9 * 1)), s0, GoodFont, 0x66FFAAFF)
-    addiu s0, s0, 4
-    PrintHexRegW(fp, 236, (166 + (9 * 2)), s0, GoodFont, 0xAAFF66FF)
-    addiu s0, s0, 4
-    PrintHexRegW(fp, 236, (166 + (9 * 3)), s0, GoodFont, 0xFFFF22FF)
     
-    // Print counter again
-    la t0, PRINT_ADDR
-    PrintHexRegW(fp, 160, (166+5), t0, GoodFont, COLOR_WHITE)
+    // SI Registers
+    la s0, 0xA4800000
+    PrepareHexRegW(fp, 236, 160, s0, GoodFont, COLOR_DARKGREEN)
+    addiu s1, zero, 5
+SIRegLoop:
+    jal Func_HexW
+    nop
+    addiu a1, a1, 4
+    addiu a0, a0, 9 * SCREEN_WIDTH * BYTES_PER_PIXEL
+    la t0, 0x2F0F1F00
+    addu a3, a3, t0
     
-    // Print current VI line
-    la t0, 0xA4400010
-    PrintHexRegW(fp, 120, 22, t0, GoodFont, COLOR_BLUE)
+    bne s1, zero, SIRegLoop
+    addi s1, s1, -1
     //-------------------- Finished printing stuff --------------------//
     
     
