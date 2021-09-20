@@ -13,6 +13,8 @@ constant BUF_FLAGS(0xA03FFFFC)
 
 constant SP_STORAGE(0xA03FFF00)
 
+constant PIF_STORAGE(0xA03FFD00)
+
 constant SCREEN_WIDTH(320)
 constant SCREEN_HEIGHT(240)
 constant BYTES_PER_PIXEL(4)
@@ -22,22 +24,15 @@ constant FONT_SPACING(1)
 constant PRINT_ADDR(0xA03FFE00)
 
 include "lib/n64/header.asm"
-include "lib/n64/n64.inc"
-include "lib/n64/gfx.inc"
+include "lib/n64/constants.inc"
 include "lib/graphics/colors.inc"
+include "lib/graphics/visetup.inc"
 insert "lib/bin/n64_bootcode.bin"
 
-macro ClearBuffer() {
-    addu s4, zero, fp
-    la s3, (BYTES_PER_PIXEL * SCREEN_WIDTH * SCREEN_HEIGHT)
-    addu s4, s4, s3
-    
-    addu s3, zero, fp
-    la s2, 0x222222FF
-Clear:
-    sw s2, 0(s3)
-    bne s4, s3, Clear
-    addi s3, s3, 4
+macro ALIGN(size) { // Align Byte Amount
+  while (pc() % {size}) {
+    db 0
+  }
 }
 
 // This will first clear any VI interrupt just in case.
@@ -90,86 +85,16 @@ macro SetupISR() {
     nop
 }
 
-// Set BUF_FLAGS[0] indicating main loop is done
-macro SetReadyForSwap() {
-    la t0, BUF_FLAGS
-    lw t1, 0(t0)
-    la t2, 0x00000001
-    or t1, t1, t2
-    sw t1, 0(t0)
-}
 
-// Wait for VI Interrupt to clear BUF_FLAGS[0]
-macro WaitForVII() {
-    la t0, BUF_FLAGS
-WFVII_Loop:
-    lw t1, 0(t0)
-    andi t1, t1, 0x0001
-    bne t1, zero, WFVII_Loop
-    nop
-}
-
-macro SwapBuffer() {
-    la sp, SP_STORAGE
-    sd t0, 0(sp)
-    sd t1, 8(sp)
-    sd t2, 16(sp)
-
-    la t0, 0xA4400004 // VI_ORIGIN
-    sw fp, 0(t0)
-
-    la t0, BUF_BASE_A
-    beq t0, fp, SwapB_CurrentIs1
-    nop
-
-//CurrentIs2
-    la fp, BUF_BASE_A
-
-    j SwapB_End
-    nop
-
-SwapB_CurrentIs1:
-    la fp, BUF_BASE_B
-
-
-SwapB_End:
-    ld t0, 0(sp)
-    ld t1, 8(sp)
-    ld t2, 16(sp)
-}
-
-
-macro SWOffset(value, temp_reg, offset, base_reg) {
-    la {temp_reg}, {value}
-    sw {temp_reg}, {offset}({base_reg})
-}
-
-macro SetupVI() {
-    la fp, BUF_BASE_A // Sets framepointer CPU register
-    
-    la t0, 0xA4400000 // VI_BASE
-    SWOffset(0x00003303, t1, VI_CTRL, t0)
-    SWOffset(BUF_BASE_B, t1, VI_ORIGIN, t0)
-    SWOffset(0x00000140, t1, VI_WIDTH, t0)
-    SWOffset(0x00000208, t1, VI_V_INTR, t0)
-    SWOffset(0x03E52239, t1, VI_TIMING, t0)
-    SWOffset(0x0000020D, t1, VI_V_SYNC, t0)
-    SWOffset(0x00000C15, t1, VI_H_SYNC, t0)
-    SWOffset(0x0C150C15, t1, VI_H_SYNC_LEAP, t0)
-    SWOffset(0x006C02EC, t1, VI_H_VIDEO, t0)
-    SWOffset(0x002501FF, t1, VI_V_VIDEO, t0)
-    SWOffset(0x000E0204, t1, VI_V_BURST, t0)
-    SWOffset(0x00000200, t1, VI_X_SCALE, t0)
-    SWOffset(0x00000400, t1, VI_Y_SCALE, t0)
-    
-    // Clear BUF_FLAGS
-    la t0, BUF_FLAGS
-    addu t1, zero, zero
-    sw t1, 0(t0)
-}
 
 
 Start:
+    la t0, 0xBFC007FC   //
+    la t1, 0x00000008   //
+    sw t1, 0(t0)        // Enables PIF operation
+
+    include "lib/graphics/print.inc" // Contains functions and macros
+    
     // Set Compare register to avoid accidental interrupt flag (though this interrupt shouldn't be enabled at any point)
     la t0, 0xFFFFFFFF
     nop
@@ -180,18 +105,61 @@ Start:
     SetupISR()
     
     
+    la t0, 0xA4800000
+    la t1, PIF_STORAGE
+    sw t1, 0(t0)
+    
+    
+    la t0, PIF_STORAGE
+    la t1, 0xA4800000 // SI_BASE
+    
+    la t2, 0xFF010401
+    sw t2, 0x00(t0)
+    la t2, 0xFFFFFFFF
+    sw t2, 0x04(t0)
+    la t2, 0xFF010401
+    sw t2, 0x08(t0)
+    la t2, 0xFFFFFFFF
+    sw t2, 0x0C(t0)
+    la t2, 0xFF010401
+    sw t2, 0x10(t0)
+    la t2, 0xFFFFFFFF
+    sw t2, 0x14(t0)
+    la t2, 0xFF010401
+    sw t2, 0x18(t0)
+    la t2, 0xFFFFFFFF
+    sw t2, 0x1C(t0)
+    
+    la t2, 0xFE000000
+    sw t2, 0x20(t0)
+    la t2, 0x00000000
+    sw t2, 0x24(t0)
+    nop
+    sw t2, 0x28(t0)
+    nop
+    sw t2, 0x2C(t0)
+    nop
+    sw t2, 0x30(t0)
+    nop
+    sw t2, 0x34(t0)
+    nop
+    sw t2, 0x38(t0)
+    la t2, 0x00000001
+    sw t2, 0x3C(t0)
+    
+    la t2, 0xBFC007C0
+    sw t2, 0x10(t1)
+    
     // Clear counter data
     la t0, PRINT_ADDR
     sw zero, 0(t0)
     sw zero, 4(t0)
     
-    include "lib/graphics/print.inc" // Contains functions and macros
     
     // Start of main loop
 Refresh:
     
-    // Clear fp framebuffer for new drawing
-    ClearBuffer()
+    ClearBuffer()   // Clear fp framebuffer for new drawing
     
     
     //-------------------- Start printing stuff --------------------\\
@@ -204,11 +172,11 @@ Refresh:
     PrintHexRegW(fp, 10, 10, t0, GoodFont, COLOR_WHITE)
     
     
-    // PIF RAM
-    la s0, 0xBFC007C0
-    PrepareHexRegW(fp, 236, 10, s0, GoodFont, COLOR_RED)
+    // PIF_STORAGE (in RDRAM)
+    la s0, PIF_STORAGE
+    PrepareHexRegW(fp, 158, 10, s0, GoodFont, COLOR_RED)
     addiu s1, zero, 15
-PIFLoop:
+PIFStoreLoop:
     jal Func_HexW
     nop
     addiu a1, a1, 4
@@ -216,20 +184,36 @@ PIFLoop:
     la t0, 0x00000F00
     addu a3, a3, t0
     
-    bne s1, zero, PIFLoop
+    bne s1, zero, PIFStoreLoop
+    addi s1, s1, -1
+    
+    
+    // PIF RAM
+    la s0, 0xBFC007C0
+    PrepareHexRegW(fp, 236, 10, s0, GoodFont, COLOR_RED)
+    addiu s1, zero, 15
+PIFRamLoop:
+    jal Func_HexW
+    nop
+    addiu a1, a1, 4
+    addiu a0, a0, 9 * SCREEN_WIDTH * BYTES_PER_PIXEL
+    la t0, 0x00000F00
+    addu a3, a3, t0
+    
+    bne s1, zero, PIFRamLoop
     addi s1, s1, -1
     
     
     // SI Registers
     la s0, 0xA4800000
     PrepareHexRegW(fp, 236, 160, s0, GoodFont, COLOR_DARKGREEN)
-    addiu s1, zero, 5
+    addiu s1, zero, 7
 SIRegLoop:
     jal Func_HexW
     nop
     addiu a1, a1, 4
     addiu a0, a0, 9 * SCREEN_WIDTH * BYTES_PER_PIXEL
-    la t0, 0x2F0F1F00
+    la t0, 0x1F0F1F00
     addu a3, a3, t0
     
     bne s1, zero, SIRegLoop
@@ -244,6 +228,10 @@ SIRegLoop:
     
     j Refresh
     nop
+    
+    
+    
+    
     
 ALIGN(32)
     

@@ -1,4 +1,5 @@
-//Code written by PeterLemon https://github.com/PeterLemon/N64
+// These constants were written by PeterLemon https://github.com/PeterLemon/N64
+// But were then reorganized into this single file.
 //
 //=============
 // N64 Include
@@ -246,137 +247,39 @@ constant VI_NTSC_CLOCK(48681812) // NTSC: Hz = 48.681812 MHz
 constant VI_PAL_CLOCK(49656530)  // PAL:  Hz = 49.656530 MHz
 constant VI_MPAL_CLOCK(48628316) // MPAL: Hz = 48.628316 MHz
 
-macro ALIGN(size) { // Align Byte Amount
-  while (pc() % {size}) {
-    db 0
-  }
-}
-
-macro align(size) { // Align Byte Amount
-  while (pc() % {size}) {
-    db 0
-  }
-}
-
-macro FORCE_PC(size) {
-	if (pc() > {size}) {
-		error "Program Counter is greater than specified size"
-	}
-	while (pc() < {size}) {
-		db 0
-	}
-}
-
-define value(DEBUG_SHOW_STATIC_VALUE);
-
-macro FIXED_GAP(base, gap) {
-	if (pc() > {base} + {gap}) {		
-		error "Gap is greater than specified size "
-	}
-	while (pc() < {base} + {gap}) {
-		if {defined DEBUG_SHOW_STATIC_VALUE} {
-			db 0xA5
-		} else {
-			db 0x0
-		}
-	}	
-}
-
-macro init() { // Initialise N64 (Stop N64 From Crashing 5 Seconds After Boot)
-  lui a0,PIF_BASE // A0 = PIF Base Register ($BFC00000)
-  ori t0,zero, 8
-  sw t0,PIF_RAM+$3C(a0)
-  // Stack location is max location of DMEM working towards zero  
-  // li sp, 0xA400'0FFF & -4
-  // Alternate Stack Location if DMEM is completely used
-  // Put it at the very top of RAM and let it work down.
-	la t0, 0x80000318
-	lw t0, 0(t0)	 // 0x40'0000 or 0x80'0000	
-	lui t1, 0x8000
-	or t0, t0, t1
-	addi sp, t0, -4
-}
-
-macro DMARAM2Cart(start, end, dest) { // DMA Data Copy Cart->DRAM: Start Cart Address, End Cart Address, Destination DRAM Address
-  lui a0,PI_BASE // A0 = PI Base Register ($A4600000)
-  -
-    lw t0,PI_STATUS(a0) // T0 = Word From PI Status Register ($A4600010)
-    andi t0,3 // AND PI Status With 3
-    bnez t0,- // IF TRUE DMA Is Busy
-    nop // Delay Slot
-
-  la t0,{dest}&$7FFFFF // T0 = Aligned DRAM Physical RAM Offset ($00000000..$007FFFFF 8MB)
-  sw t0,PI_DRAM_ADDR(a0) // Store RAM Offset To PI DRAM Address Register ($A4600000)
-  la t0,$10000000|({start}&$3FFFFFF) // T0 = Aligned Cart Physical ROM Offset ($10000000..$13FFFFFF 64MB)
-  sw t0,PI_CART_ADDR(a0) // Store ROM Offset To PI Cart Address Register ($A4600004)
-  la t0,({end}-{start})-1 // T0 = Length Of DMA Transfer In Bytes - 1
-  sw t0,PI_RD_LEN_LEN(a0) // Store DMA Length To PI Write Length Register ($A460000C)
-}
-macro DMAWait() {
-  lui a0,PI_BASE // A0 = PI Base Register ($A4600000)
-  -
-    lw t0,PI_STATUS(a0) // T0 = Word From PI Status Register ($A4600010)
-    andi t0,3 // AND PI Status With 3
-    bnez t0,- // IF TRUE DMA Is Busy
-    nop // Delay Slot
-}
-macro DMA(start, end, dest) { // DMA Data Copy Cart->DRAM: Start Cart Address, End Cart Address, Destination DRAM Address
-  lui a0,PI_BASE // A0 = PI Base Register ($A4600000)
-  -
-    lw t0,PI_STATUS(a0) // T0 = Word From PI Status Register ($A4600010)
-    andi t0,3 // AND PI Status With 3
-    bnez t0,- // IF TRUE DMA Is Busy
-    nop // Delay Slot
-
-  la t0,{dest}&$7FFFFF // T0 = Aligned DRAM Physical RAM Offset ($00000000..$007FFFFF 8MB)
-  sw t0,PI_DRAM_ADDR(a0) // Store RAM Offset To PI DRAM Address Register ($A4600000)
-  la t0,$10000000|({start}&$3FFFFFF) // T0 = Aligned Cart Physical ROM Offset ($10000000..$13FFFFFF 64MB)
-  sw t0,PI_CART_ADDR(a0) // Store ROM Offset To PI Cart Address Register ($A4600004)
-  la t0,({end}-{start})-1 // T0 = Length Of DMA Transfer In Bytes - 1
-  sw t0,PI_WR_LEN(a0) // Store DMA Length To PI Write Length Register ($A460000C)
-}
-macro STACK_PUSH(register) {
-	addiu sp, sp, -4
-	sw {register}, 0(sp)
-}
-
-macro STACK_POP(register) {
-	lw {register}, 0(sp)
-	addiu sp, sp, 4
-}
-
-macro STACK_ENTRY() {
-	addiu sp, sp, -56
-	sw ra, 0(sp)
-	sw a0, 4(sp)
-	sw a1, 8(sp)
-	sw a2, 12(sp)
-	sw a3, 16(sp)
-	sw s0, 20(sp)
-	sw s1, 24(sp)
-	sw s2, 28(sp)
-	sw s3, 32(sp)
-	sw s4, 36(sp)
-	sw s5, 40(sp)
-	sw s6, 44(sp)
-	sw s7, 48(sp)
-	sw s8, 52(sp)
-}
-
-macro STACK_RETURN() {
-	lw ra, 0(sp)
-	lw a0, 4(sp)
-	lw a1, 8(sp)
-	lw a2, 12(sp)
-	lw a3, 16(sp)
-	lw s0, 20(sp)
-	lw s1, 24(sp)
-	lw s2, 28(sp)
-	lw s3, 32(sp)
-	lw s4, 36(sp)
-	lw s5, 40(sp)
-	lw s6, 44(sp)
-	lw s7, 48(sp)
-	lw s8, 52(sp)
-	addiu sp, sp, 56
-}
+//==============
+// N64 Graphics
+//==============
+constant BPP0($0000)  // VI Status/Control: Color Depth Blank (No Data Or Sync) (Bit 0..1)
+//*RESERVED*($0001)   // VI Status/Control: Color Depth Reserved (Bit 0..1)
+constant BPP16($0002) // VI Status/Control: Color Depth 16BPP R5/G5/B5/A1 (Bit 0..1)
+constant BPP32($0003) // VI Status/Control: Color Depth 32BPP R8/G8/B8/A8 (Bit 0..1)
+constant GAMMA_DITHER_EN($00004) // VI Status/Control: Gamma Dither Enable (Requires: Gamma Enable) (Bit 2)
+constant GAMMA_EN($00008)        // VI Status/Control: Gamma Enable (Gamma Boost For YUV Images) (Bit 3)
+constant DIVOT_EN($00010)    // VI Status/Control: Divot Enable (Used With Anti-alias) (Bit 4)
+constant VBUS_CLK_EN($00020) // VI Status/Control: Video Bus Clock Enable (Bit 5)
+constant INTERLACE($00040) // VI Status/Control: Interlace/Serrate (Used With Interlaced Display) (Bit 6)
+constant TST_MODE($00080)  // VI Status/Control: Test Mode (Bit 7)
+constant AA_MODE_0($00000) // VI Status/Control: AA Mode 0 = Anti�-alias�&�Resample (Always Fetch�Extra Lines) (Bit 8..9)
+constant AA_MODE_1($00100) // VI Status/Control: AA Mode 1 = Anti�-alias�&�Resample (Fetch�Extra Lines When�Needed) (Bit 8..9)
+constant AA_MODE_2($00200) // VI Status/Control: AA Mode 2 = Resample Only (Bit 8..9)
+constant AA_MODE_3($00300) // VI Status/Control: AA Mode 3 = Replicate�Pixels &�No�Interpolation (Bit 8..9)
+constant DIAG_0($00400) // VI Status/Control: Diagnotic 0 (Bit 10..11)
+constant DIAG_1($00800) // VI Status/Control: Diagnotic 1 (Bit 10..11)
+constant PIXEL_ADV_0($00000) // VI Status/Control: Pixel Advance 0 (Bit 12..15)
+constant PIXEL_ADV_1($01000) // VI Status/Control: Pixel Advance 1 (Bit 12..15)
+constant PIXEL_ADV_2($02000) // VI Status/Control: Pixel Advance 2 (Bit 12..15)
+constant PIXEL_ADV_3($03000) // VI Status/Control: Pixel Advance 3 (Bit 12..15)
+constant PIXEL_ADV_4($04000) // VI Status/Control: Pixel Advance 4 (Bit 12..15)
+constant PIXEL_ADV_5($05000) // VI Status/Control: Pixel Advance 5 (Bit 12..15)
+constant PIXEL_ADV_6($06000) // VI Status/Control: Pixel Advance 6 (Bit 12..15)
+constant PIXEL_ADV_7($07000) // VI Status/Control: Pixel Advance 7 (Bit 12..15)
+constant PIXEL_ADV_8($08000) // VI Status/Control: Pixel Advance 8 (Bit 12..15)
+constant PIXEL_ADV_9($09000) // VI Status/Control: Pixel Advance 9 (Bit 12..15)
+constant PIXEL_ADV_A($0A000) // VI Status/Control: Pixel Advance A (Bit 12..15)
+constant PIXEL_ADV_B($0B000) // VI Status/Control: Pixel Advance B (Bit 12..15)
+constant PIXEL_ADV_C($0C000) // VI Status/Control: Pixel Advance C (Bit 12..15)
+constant PIXEL_ADV_D($0D000) // VI Status/Control: Pixel Advance D (Bit 12..15)
+constant PIXEL_ADV_E($0E000) // VI Status/Control: Pixel Advance E (Bit 12..15)
+constant PIXEL_ADV_F($0F000) // VI Status/Control: Pixel Advance F (Bit 12..15)
+constant DITHER_FILTER_EN($10000) // VI Status/Control: Dither Filter Enable (Used With 16BPP Display) (Bit 16)
