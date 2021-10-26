@@ -91,7 +91,7 @@ macro SetupISR() {
 Start:
     la t0, 0xBFC007FC   //
     la t1, 0x00000008   //
-    sw t1, 0(t0)        // Enables PIF operation
+    sw t1, 0(t0)        // Enables PIF operation // Doesn't seem to actually work?
 
     include "lib/graphics/print.inc" // Contains functions and macros
     
@@ -104,15 +104,20 @@ Start:
     SetupVI()
     SetupISR()
     
+    // Clear counter data
+    la t0, PRINT_ADDR
+    sw zero, 0(t0)
+    sw zero, 4(t0)
     
-    la t0, 0xA4800000
-    la t1, PIF_STORAGE
-    sw t1, 0(t0)
+    
+    // Start of main loop
+Refresh:
     
     
+    // Prepare PIF commands in RDRAM //
     la t0, PIF_STORAGE
     la t1, 0xA4800000 // SI_BASE
-    
+
     la t2, 0xFF010401
     sw t2, 0x00(t0)
     la t2, 0xFFFFFFFF
@@ -129,35 +134,52 @@ Start:
     sw t2, 0x18(t0)
     la t2, 0xFFFFFFFF
     sw t2, 0x1C(t0)
-    
+
     la t2, 0xFE000000
     sw t2, 0x20(t0)
     la t2, 0x00000000
     sw t2, 0x24(t0)
-    nop
     sw t2, 0x28(t0)
-    nop
     sw t2, 0x2C(t0)
-    nop
     sw t2, 0x30(t0)
-    nop
     sw t2, 0x34(t0)
-    nop
     sw t2, 0x38(t0)
-    la t2, 0x00000001
+    la t2, 0x00000009   // includes 0x08 which should only need to be sent at boot, but idk
     sw t2, 0x3C(t0)
     
-    la t2, 0xBFC007C0
-    sw t2, 0x10(t1)
-    
-    // Clear counter data
-    la t0, PRINT_ADDR
-    sw zero, 0(t0)
-    sw zero, 4(t0)
     
     
-    // Start of main loop
-Refresh:
+    la t0, 0xA4800000 // SI_BASE
+    
+SIDMA_PrepareWait:
+    lw t1, 0x18(t0)
+    andi t1, t1, 0x0003
+    bne t1, zero, SIDMA_PrepareWait
+    nop
+    
+    la t1, PIF_STORAGE
+    sw t1, 0x00(t0)
+    la t1, 0x1FC007C0
+    sw t1, 0x10(t0)
+    
+SIDMA_WriteWait:
+    lw t1, 0x18(t0)
+    andi t1, t1, 0x0003
+    bne t1, zero, SIDMA_WriteWait
+    nop
+    
+    
+    la t1, PIF_STORAGE
+    sw t1, 0x00(t0)
+    la t1, 0x1FC007C0
+    sw t1, 0x04(t0)
+    
+SIDMA_ReadWait:
+    lw t1, 0x18(t0)
+    andi t1, t1, 0x0003
+    bne t1, zero, SIDMA_ReadWait
+    nop
+    
     
     ClearBuffer()   // Clear fp framebuffer for new drawing
     
